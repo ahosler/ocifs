@@ -16,6 +16,7 @@ from oci.signer import AbstractBaseSigner
 from oci.auth.signers import (
     get_resource_principals_signer,
     InstancePrincipalsSecurityTokenSigner,
+    get_oke_workload_identity_resource_principal_signer,
 )
 from oci.config import DEFAULT_PROFILE, from_file, DEFAULT_LOCATION
 from oci.exceptions import ServiceError, ConfigFileNotFound
@@ -56,7 +57,7 @@ def setup_logging(level=None):
 if "OCIFS_LOGGING_LEVEL" in os.environ:
     setup_logging()
 
-IAM_POLICIES = {"api_key", "resource_principal", "instance_principal", "unknown_signer"}
+IAM_POLICIES = {"api_key", "resource_principal", "instance_principal", "oke_workload_identity", "unknown_signer"}
 EU_SOVEREIGN_CLOUD_REGIONS = ["eu-frankfurt-2", "eu-madrid-2"]
 
 
@@ -1132,6 +1133,15 @@ class OCIFileSystem(AbstractFileSystem):
 
     def _set_up_instance_principal(self):
         self.config_kwargs["signer"] = InstancePrincipalsSecurityTokenSigner()
+
+    def _set_up_oke_workload_identity(self):
+        self.config_kwargs["signer"] = (
+            get_oke_workload_identity_resource_principal_signer()
+        )
+        if not self.config.get("region"):
+            region = os.environ.get("OCI_REGION")
+            if region:
+                self.config["region"] = region
 
     def _set_up_api_key(self):
         if not self.config:
