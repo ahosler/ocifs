@@ -135,6 +135,9 @@ class OCIFileSystem(AbstractFileSystem):
         The Region Identifier that the client should connnect to.
         Regions can be found here:
         https://docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm
+    compartment_id : str (None)
+        The OCID of the compartment to scope the authorization to. If not
+        provided, the tenancy's root compartment will be used.
     default_block_size : int (None)
         If given, the default block size value used for ``open()``, if no
         specific value is given at all time. The built-in default is 5MB.
@@ -163,6 +166,7 @@ class OCIFileSystem(AbstractFileSystem):
         profile: str = None,
         iam_type: str = None,
         region: str = None,
+        compartment_id: str = None,
         default_block_size: int = None,
         default_cache_type: str = "bytes",
         default_cache_options: dict = None,
@@ -184,6 +188,7 @@ class OCIFileSystem(AbstractFileSystem):
         self._iam_type = iam_type
         self.oci_client = None
         self.region = region
+        self.compartment_id = compartment_id
         self.default_tenancy = None
         self.default_namespace = None
         self.connect()
@@ -429,7 +434,7 @@ class OCIFileSystem(AbstractFileSystem):
                 comp_id = (
                     compartment_id
                     if compartment_id
-                    else kwargs.pop("compartment_id", self._get_default_tenancy())
+                    else kwargs.pop("compartment_id", self.compartment_id or self._get_default_tenancy())
                 )
                 relevant_kwargs = self._get_oci_method_kwargs(
                     self.oci_client.list_buckets,
@@ -833,6 +838,7 @@ class OCIFileSystem(AbstractFileSystem):
             )
         if bucket:
             try:
+                kwargs["compartment_id"] = self.compartment_id
                 bucket_data = self._call_oci(
                     self.oci_client.head_bucket,
                     namespace_name=namespace,
@@ -897,7 +903,7 @@ class OCIFileSystem(AbstractFileSystem):
         comp_id = (
             compartment_id
             if compartment_id
-            else kwargs.get("compartment_id", self._get_default_tenancy())
+            else kwargs.get("compartment_id", self.compartment_id or self._get_default_tenancy())
         )
         if not key or create_parents:
             try:
