@@ -776,13 +776,15 @@ class OCIFileSystem(AbstractFileSystem):
             raise translate_oci_error(e) from e
         self.invalidate_cache(path1)
 
-    def info(self, path, **kwargs):
+    def info(self, path, refresh=False, **kwargs):
         """Get metadata about a file from a head or list call.
 
         Parameters
         ----------
         path : str
             URI of the directory/file
+        refresh : bool (=False)
+            if False, look in local cache for file details first
         kwargs : dict
             additional args for OCI
 
@@ -792,6 +794,19 @@ class OCIFileSystem(AbstractFileSystem):
         generic_dir = CaseInsensitiveDict(
             {"name": path, "size": 0, "type": "directory"}
         )
+
+        if not refresh:
+            # Check the cache
+            parent = self._parent(path)
+            if parent in self.dircache:
+                for entry in self.dircache[parent]:
+                    if entry["name"].rstrip("/") == path.rstrip("/"):
+                        return entry
+
+            # If it's a known directory, it might be in the cache directly
+            if path in self.dircache:
+                return generic_dir
+
         # self.invalidate_cache(path=path)
         if key:
             try:
@@ -813,12 +828,16 @@ class OCIFileSystem(AbstractFileSystem):
                             prefix=key.rstrip("/") + "/",
                             limit=1,
                         ).data.objects:
-                            generic_dir
+                            # If it's a directory, cache it as such
+                            parent = self._parent(path)
+                            if parent in self.dircache:
+                                if generic_dir not in self.dircache[parent]:
+                                    self.dircache[parent].append(generic_dir)
                             return generic_dir
                     except Exception as e:
                         raise translate_oci_error(e) from e
                 raise translate_oci_error(e) from e
-            return CaseInsensitiveDict(
+            info_dict = CaseInsensitiveDict(
                 {
                     "name": path,
                     "type": "file",
@@ -831,6 +850,20 @@ class OCIFileSystem(AbstractFileSystem):
                     "storageTier": obj_data["storage-tier"],
                 }
             )
+            # Add to cache
+            parent = self._parent(path)
+            if parent in self.dircache:
+                # Update or add
+                found = False
+                for i, entry in enumerate(self.dircache[parent]):
+                    if entry["name"] == path:
+                        self.dircache[parent][i] = info_dict
+                        found = True
+                        break
+                if not found:
+                    self.dircache[parent].append(info_dict)
+
+            return info_dict
         if bucket:
             try:
                 bucket_data = self._call_oci(
